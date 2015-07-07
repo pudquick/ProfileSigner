@@ -5,10 +5,12 @@ import subprocess
 import os
 import sys
 import tempfile
+import base64
 #try:
 #    import FoundationPlist as plistlib
 #except ImportError:
 import plistlib as plistlib
+from Foundation import NSPropertyListSerialization, NSData, NSPropertyListXMLFormat_v1_0
 
 def main():
     parser = argparse.ArgumentParser(description='Sign or encrypt mobileconfig profiles, using either a cert + key file, or a keychain certificate.')
@@ -43,7 +45,8 @@ def main():
         # First, we need to extract the certificate we want to use from the keychain
         security_cmd = ['/usr/bin/security', 'find-certificate', '-c', args.name, '-p' ]
         if args.keychain:
-            security_cmd += ['args.keychain']
+            security_cmd += [args.keychain]
+        print security_cmd
         proc = subprocess.Popen(security_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         (sout, serr) = proc.communicate()
         if serr:
@@ -78,11 +81,17 @@ def main():
             encPayload += ''.join(line.rstrip()) # to get rid of Python's \n everywhere
         del myProfile['PayloadContent']
 
+        binaryEncPayload = base64.b64decode(encPayload)
+        wrapped_data = NSData.dataWithBytes_length_(binaryEncPayload, len(binaryEncPayload))
+        myProfile['EncryptedPayloadContent'] = wrapped_data
+        plistData, error = NSPropertyListSerialization.dataFromPropertyList_format_errorDescription_(myProfile, NSPropertyListXMLFormat_v1_0, None)
+        plistData.writeToFile_atomically_(args.outfile, True)
+
         # Step 5: Use plistlib.Data to properly encode the content
-        myProfile['EncryptedPayloadContent'] = plistlib.Data(encPayload)
+        # myProfile['EncryptedPayloadContent'] = plistlib.Data(encPayload)
         # now save the profile
-        plistlib.writePlist(myProfile, args.outfile)
-        
+        # plistlib.writePlist(myProfile, args.outfile)
+
         # Now clean up after ourselves
     
     if args.sign == 'sign' or args.sign == 'both':
